@@ -8,6 +8,8 @@ openwa = "*"
 selenium = "*"
 requests = "*"
 pillow = "*"
+python-axolotl = "*"
+python-magic = "*"
 
 [dev-packages]
 
