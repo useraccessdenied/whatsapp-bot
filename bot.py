@@ -2,7 +2,7 @@ from openwa import WhatsAPIDriver
 from time import sleep
 from threading import Thread, Event
 from signal import signal, SIGINT, SIGTERM
-from queue import Queue
+from queue import Queue, Empty
 import re
 import requests
 
@@ -77,8 +77,6 @@ class ReceiveMessageThread(Thread):
     self.shutdown_flag = Event()
 
   def run(self) -> None:
-    global message_queue
-
     print("Message thread started.")
 
     while not self.shutdown_flag.isSet():
@@ -103,105 +101,104 @@ class APIWorkerThread(Thread):
     self.shutdown_flag = Event()
 
   def run(self) -> None:
-    global message_queue
-
     print("API Worker thread started")
 
     while not self.shutdown_flag.isSet():
-      current_message = message_queue.get()
-      command = re.compile("^[#!/]([a-z]+)").search(current_message.content)
+      if not message_queue.empty():
+        current_message = message_queue.get_nowait()
+        command = re.compile("^[#!/]([a-z]+)").search(current_message.content)
 
-      if command is not None:
-        command = command.group(1)
-        remaining_text = re.compile("^[#!/][a-z]+\\s+(.*)").search(current_message.content)
+        if command is not None:
+          command = command.group(1)
+          remaining_text = re.compile("^[#!/][a-z]+\\s+(.*)").search(current_message.content)
 
-        if remaining_text is not None:
-          remaining_text = remaining_text.group(1).strip()
-        else:
-          remaining_text = ""
+          if remaining_text is not None:
+            remaining_text = remaining_text.group(1).strip()
+          else:
+            remaining_text = ""
 
-        if command == "help":
-          driver.chat_send_message(current_message.chat_id, help_string)
-        elif command == "math" or command == "cal":
-          data = {
-            'expr': remaining_text
-          }
-          headers = {'content-type': 'application/json'}
+          if command == "help":
+            driver.chat_send_message(current_message.chat_id, help_string)
+          elif command == "math" or command == "cal":
+            data = {
+              'expr': remaining_text
+            }
+            headers = {'content-type': 'application/json'}
 
-          response = requests.post("http://api.mathjs.org/v4/",
-                                   headers=headers, json=data)
-          if response.ok:
-            driver.chat_send_message(current_message.chat_id,
-                                     response.json()['result'])
-        elif command == "catfact" or command == "catfacts":
-          response = requests.get("https://cat-fact.herokuapp.com/facts/random")
-          if response.ok:
-            driver.chat_send_message(current_message.chat_id,
-                                     response.json()['text'])
-        elif command == "cbs":
-          response = requests.get("https://corporatebs-generator.sameerkumar.website/")
-          if response.ok:
-            driver.chat_send_message(current_message.chat_id,
-                                     response.json()['phrase'])
-        elif command == "pjokes" or command == "pjoke":
-          response = requests.get("https://geek-jokes.sameerkumar.website/api?format=json")
-          if response.ok:
-            driver.chat_send_message(current_message.chat_id,
-                                     response.json()['joke'])
-        elif command == "jokes" or command == "joke":
-          response = requests.get("https://official-joke-api.appspot.com/random_joke")
-          if response.ok:
-            joke = response.json()['setup'] + "\n\n" + response.json()['punchline']
-            driver.chat_send_message(current_message.chat_id,
-                                     joke)
-        elif command == "quotes" or command == "quote":
-          response = requests.get("https://freequote.herokuapp.com/")
-          if response.ok:
-            quote = response.json()['quote'] + "\n\n" + response.json()['author']
-            driver.chat_send_message(current_message.chat_id,
-                                     quote)
-        elif command == "pquote" or command == "pquotes":
-          response = requests.get("http://quotes.stormconsultancy.co.uk/random.json")
-          if response.ok:
-            pquote = response.json()['quote'] + "\n\n" + response.json()['author']
-            driver.chat_send_message(current_message.chat_id,
-                                     pquote)
-        elif command == "fact" or command == "facts":
-          response = requests.get("https://useless-facts.sameerkumar.website/api")
-          if response.ok:
-            driver.chat_send_message(current_message.chat_id,
-                                     response.json()['data'])
-        elif command == "dict":
-          if " " not in remaining_text:
-            response = requests.get("https://api.dictionaryapi.dev/api/v2/entries/en/"
-                                    + remaining_text)
+            response = requests.post("http://api.mathjs.org/v4/",
+                                     headers=headers, json=data)
             if response.ok:
-              words = response.json()
-              res = ""
-              for word in words:
-                res += word['word']
-                res += " - "
-                res += word['phonetics'][0]['text']
-                res += "\n\n"
-                for meaning in word['meanings']:
-                  res += "(" + meaning['partOfSpeech'] + ")\n"
-                  res += meaning['definitions'][0]['definition']
+              driver.reply_message(current_message.chat_id, current_message.id,
+                                   response.json()['result'])
+          elif command == "catfact" or command == "catfacts":
+            response = requests.get("https://cat-fact.herokuapp.com/facts/random")
+            if response.ok:
+              driver.chat_send_message(current_message.chat_id,
+                                       response.json()['text'])
+          elif command == "cbs":
+            response = requests.get("https://corporatebs-generator.sameerkumar.website/")
+            if response.ok:
+              driver.chat_send_message(current_message.chat_id,
+                                       response.json()['phrase'])
+          elif command == "pjokes" or command == "pjoke":
+            response = requests.get("https://geek-jokes.sameerkumar.website/api?format=json")
+            if response.ok:
+              driver.chat_send_message(current_message.chat_id,
+                                       response.json()['joke'])
+          elif command == "jokes" or command == "joke":
+            response = requests.get("https://official-joke-api.appspot.com/random_joke")
+            if response.ok:
+              joke = response.json()['setup'] + "\n\n" + response.json()['punchline']
+              driver.chat_send_message(current_message.chat_id,
+                                       joke)
+          elif command == "quotes" or command == "quote":
+            response = requests.get("https://freequote.herokuapp.com/")
+            if response.ok:
+              quote = response.json()['quote'] + "\n\n" + response.json()['author']
+              driver.chat_send_message(current_message.chat_id,
+                                       quote)
+          elif command == "pquote" or command == "pquotes":
+            response = requests.get("http://quotes.stormconsultancy.co.uk/random.json")
+            if response.ok:
+              pquote = response.json()['quote'] + "\n\n" + response.json()['author']
+              driver.chat_send_message(current_message.chat_id,
+                                       pquote)
+          elif command == "fact" or command == "facts":
+            response = requests.get("https://useless-facts.sameerkumar.website/api")
+            if response.ok:
+              driver.chat_send_message(current_message.chat_id,
+                                       response.json()['data'])
+          elif command == "dict":
+            if " " not in remaining_text:
+              response = requests.get("https://api.dictionaryapi.dev/api/v2/entries/en/"
+                                      + remaining_text)
+              if response.ok:
+                words = response.json()
+                res = ""
+                for word in words:
+                  res += word['word']
+                  res += " - "
+                  res += word['phonetics'][0]['text']
                   res += "\n\n"
-              driver.chat_send_message(current_message.chat_id, res)
-            else:
-              driver.chat_send_message(current_message.chat_id, "Sorry pal, I couldn't find it!")
-        elif command == "meme":
-          response = requests.get("https://meme-api.herokuapp.com/gimme")
-          if response.ok:
-            image_link = response.json()['url']
-            title = response.json()['title']
-            response = requests.get(image_link)
+                  for meaning in word['meanings']:
+                    res += "(" + meaning['partOfSpeech'] + ")\n"
+                    res += meaning['definitions'][0]['definition']
+                    res += "\n\n"
+                driver.chat_send_message(current_message.chat_id, res)
+              else:
+                driver.chat_send_message(current_message.chat_id, "Sorry pal, I couldn't find it!")
+          elif command == "meme":
+            response = requests.get("https://meme-api.herokuapp.com/gimme")
             if response.ok:
-              with open('temp-dir/meme.jpg', 'wb') as file:
-                file.write(response.content)
-                driver.send_media('temp-dir/meme.jpg', current_message.chat_id, title)
-
-
+              image_link = response.json()['url']
+              title = response.json()['title']
+              response = requests.get(image_link)
+              if response.ok:
+                with open('temp-dir/meme.jpg', 'wb') as file:
+                  file.write(response.content)
+                  driver.send_media('temp-dir/meme.jpg', current_message.chat_id, title)
+          # elif command == "adminlist":
+      sleep(0.5)
     print("API Worker thread stopped")
 
 
@@ -229,5 +226,4 @@ def main():
 
 if __name__ == '__main__':
   main()
-  driver.close()
   print("Bot Stopped!")
